@@ -25,7 +25,7 @@ let cellData = {
     "Sheet1": {}
 };
 
-let saved=true;
+let save=true;
 let selectedSheet = "Sheet1";
 let totalSheets = 1;
 let lastlyAddedSheet = 1;
@@ -168,7 +168,6 @@ function selectCell(ele, e, topCell, bottomCell, leftCell, rightCell) {
     $(ele).addClass("selected");
     changeHeader(getRowCol(ele));
 }
-
 
 function changeHeader([rowId, colId]) {
     let data;
@@ -657,7 +656,7 @@ $("#menu-file").click(function(e){
     fileModal.animate({
         width:"100vw"
     },300);
-    $(".close,.file-transparent").click(function(e){
+    $(".close,.file-transparent,.new,.save,.open").click(function(e){
         fileModal.animate({
             width: "0vw"
         },300);
@@ -665,7 +664,7 @@ $("#menu-file").click(function(e){
             fileModal.remove();
         },250);
     });
-    $("new").click(function(e){
+    $(".new").click(function(e){
         if(save){
             newFile();
         }else{
@@ -683,12 +682,14 @@ $("#menu-file").click(function(e){
                                     </div>
                                 </div>
                             </div>`);
-            $(".yes-button").click(function(e){
-                //save function
-            });
-            $(".no-button,.yes-button").click(function(e){
+            
+            $(".no-button").click(function(e){
                 $(".sheet-modal-parent").remove();
                 newFile();
+            });
+            $(".yes-button").click(function(e){
+                $(".sheet-modal-parent").remove();
+                saveFile(true);
             });
         }
         // emptyPreviousSheet();
@@ -701,15 +702,20 @@ $("#menu-file").click(function(e){
         // $("#row-1-col-1").click();
     });
     $(".save").click(function(e){
-        saveFile();
+        if(!save){
+            saveFile();
+        }
     });
+    $(".open").click(function(e){
+        openFile();
+    })
 });
 
 function newFile(){
     emptyPreviousSheet();
     cellData = {"Sheet1" : {}};
     $(".sheet-tab").remove();
-    $(".sheet-tab-container").append(`<div clas="sheet-tab selected>Sheet1</div>`);
+    $(".sheet-tab-container").append(`<div class="sheet-tab selected">Sheet1</div>`);
     addSheetEvents();
     selectedSheet = "Sheet1";
     totalSheets = 1;
@@ -718,7 +724,7 @@ function newFile(){
     $("#row-1-col-1").click();
 }
 
-function saveFile(){
+function saveFile(newClicked){
     $(".container").append(`<div class="sheet-modal-parent">
                         <div class="sheet-rename-modal">
                             <div class="sheet-modal-title">Save File</div>
@@ -735,7 +741,7 @@ function saveFile(){
     $(".yes-button").click(function(e){
         $(".title").text($(".sheet-modal-input").val());
         let a = document.createElement("a");
-        a.href = `data:application/json,${JSON.stringify(cellData)}`;
+        a.href = `data:application/json,${encodeURIComponent(JSON.stringify(cellData))}`;
         a.download = $(".title").text() + ".json";
         $(".container").append(a);
         a.click();
@@ -744,5 +750,48 @@ function saveFile(){
     });
     $(".no-button,.yes-button").click(function(e){
         $(".sheet-modal-parent").remove();
+        if(newClicked){
+            newFile();
+        }
     });
 }
+
+function openFile(){
+    //Check for saving.
+    let inputFile = $(`<input accept="application/json" type="file" />`);
+    $(".container").append(inputFile);
+    inputFile.click();
+    inputFile.change(function(e){
+        let file = e.target.files[0];
+        $(".title").text(file.name.split(".json")[0]);
+        let reader = new FileReader();
+        reader.readAsText(file);
+        reader.onload = () => {
+            let data = JSON.parse(reader.result);
+            emptyPreviousSheet();
+            cellData = data;
+            $(".sheet-tab").remove();
+            let sheets = Object.keys(cellData);
+            lastlyAddedSheet=1;
+            for(let i of sheets){
+                if(i.includes("Sheet")) {
+                    let splittedSheetArray = i.split("Sheet");
+                    if(splittedSheetArray.length == 2 && !isNaN(splittedSheetArray[1])) {
+                        lastlyAddedSheet = parseInt(splittedSheetArray[1]);
+                    }
+                }
+                let tab = $(`<div class="sheet-tab selected">${i}</div>`);
+                $(".sheet-tab-container").append(tab);
+            }
+            addSheetEvents();
+            $(".sheet-tab").removeClass("selected");
+            $($(".sheet-tab")[0]).addClass("selected");
+            selectedSheet = sheets[0];
+            totalSheets = sheets.length;
+            loadCurrentSheet();
+            inputFile.remove();
+        }
+    });
+}
+
+
