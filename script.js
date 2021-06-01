@@ -16,8 +16,8 @@ for (let i = 1; i <= 100; i++) {
             n = Math.floor(n / 26);
         }
     }
-    $("#columns").append(`<div class="column-name">${str}</div>`)
-    $("#rows").append(`<div class="row-name">${i}</div>`)
+    $("#columns").append(`<div class="column-name column-${i}" id="${str}">${str}</div>`);
+    $("#rows").append(`<div class="row-name">${i}</div>`);
 }
 
 
@@ -25,7 +25,8 @@ let cellData = {
     "Sheet1": {}
 };
 
-let save=true;
+let save = true;
+
 let selectedSheet = "Sheet1";
 let totalSheets = 1;
 let lastlyAddedSheet = 1;
@@ -39,7 +40,10 @@ let defaultProperties = {
     "underlined": false,
     "alignment": "left",
     "color": "#444",
-    "bgcolor": "#fff"
+    "bgcolor": "#fff",
+    "formula": "",
+    "upStream": [],
+    "downStream": [],
 };
 
 for (let i = 1; i <= 100; i++) {
@@ -64,7 +68,14 @@ $(".input-cell").dblclick(function (e) {
 
 $(".input-cell").blur(function (e) {
     $(this).attr("contenteditable", "false");
+    let [rowId, colId] = getRowCol(this);
+    if (cellData[selectedSheet][rowId - 1][colId - 1].formula != "") {
+        updateStreams(this,[]);
+    }
+    cellData[selectedSheet][rowId - 1][colId - 1].formula = "";
     updateCellData("text", $(this).text());
+    let selfColCode = $(`.column-${colId}`).attr("id");
+    evalFormula(selfColCode + rowId);
 });
 
 function getRowCol(ele) {
@@ -169,6 +180,7 @@ function selectCell(ele, e, topCell, bottomCell, leftCell, rightCell) {
     changeHeader(getRowCol(ele));
 }
 
+
 function changeHeader([rowId, colId]) {
     let data;
     if (cellData[selectedSheet][rowId - 1] && cellData[selectedSheet][rowId - 1][colId - 1]) {
@@ -186,6 +198,7 @@ function changeHeader([rowId, colId]) {
     $("#font-family").val(data["font-family"]);
     $("#font-size").val(data["font-size"]);
     $("#font-family").css("font-family", data["font-family"]);
+    $("#formula-input").text(data.formula);
 }
 
 function addRemoveSelectFromFontStyle(data, property) {
@@ -215,6 +228,7 @@ $(".input-cell").mousemove(function (e) {
             startCell = { "rowId": rowId, "colId": colId };
             selectAllBetweenCells(startCell, startCell);
             startcellSelected = true;
+            $(".input-cell.selected").attr("contenteditable", "false");
         }
     } else {
         startcellSelected = false;
@@ -392,11 +406,11 @@ function updateCellData(property, value) {
             let [rowId, colId] = getRowCol(data);
             if (cellData[selectedSheet][rowId - 1] == undefined) {
                 cellData[selectedSheet][rowId - 1] = {};
-                cellData[selectedSheet][rowId - 1][colId - 1] = { ...defaultProperties };
+                cellData[selectedSheet][rowId - 1][colId - 1] = { ...defaultProperties, "upStream": [], "downStream": [] };
                 cellData[selectedSheet][rowId - 1][colId - 1][property] = value;
             } else {
                 if (cellData[selectedSheet][rowId - 1][colId - 1] == undefined) {
-                    cellData[selectedSheet][rowId - 1][colId - 1] = { ...defaultProperties };
+                    cellData[selectedSheet][rowId - 1][colId - 1] = { ...defaultProperties, "upStream": [], "downStream": [] };
                     cellData[selectedSheet][rowId - 1][colId - 1][property] = value;
                 } else {
                     cellData[selectedSheet][rowId - 1][colId - 1][property] = value;
@@ -418,8 +432,8 @@ function updateCellData(property, value) {
             }
         });
     }
-    if(save && currCellData != JSON.stringify(cellData)){
-        save=false;
+    if (save && currCellData != JSON.stringify(cellData)) {
+        save = false;
     }
 }
 $(".container").click(function (e) {
@@ -470,7 +484,7 @@ function addSheetEvents() {
             if (totalSheets > 1) {
                 let deleteModal = $(`<div class="sheet-modal-parent">
                                     <div class="sheet-delete-modal">
-                                        <div class="sheet-modal-title">Sheet Name</div>
+                                        <div class="sheet-modal-title">${selectedSheet}</div>
                                         <div class="sheet-modal-detail-container">
                                             <span class="sheet-modal-detail-title">Are you sure?</span>
                                         </div>
@@ -505,6 +519,7 @@ function addSheetEvents() {
 addSheetEvents();
 
 $(".add-sheet").click(function (e) {
+    save = false;
     lastlyAddedSheet++;
     totalSheets++;
     cellData[`Sheet${lastlyAddedSheet}`] = {};
@@ -512,6 +527,7 @@ $(".add-sheet").click(function (e) {
     $(".sheet-tab-container").append(`<div class="sheet-tab selected">Sheet${lastlyAddedSheet}</div>`);
     selectSheet();
     addSheetEvents();
+    $(".sheet-tab.selected")[0].scrollIntoView();
 });
 
 function selectSheet(ele) {
@@ -613,20 +629,21 @@ function deleteSheet() {
     totalSheets--;
 }
 
-$(".left-scroller,.right-scroller").click(function(e){
+$(".left-scroller,.right-scroller").click(function (e) {
     let keysArray = Object.keys(cellData);
-    let selectedSheetIndex = keysArray.indexOf(selectSheet);
-    if(selectedSheetIndex != 0 && $(this).text() == "arrow_left"){
+    let selectedSheetIndex = keysArray.indexOf(selectedSheet);
+    if (selectedSheetIndex != 0 && $(this).text() == "arrow_left") {
         selectSheet($(".sheet-tab.selected").prev()[0]);
-    }else if(selectedSheetIndex != keysArray.length - 1 && $(this).text() == "arrow_right"){
+    } else if (selectedSheetIndex != (keysArray.length - 1) && $(this).text() == "arrow_right") {
         selectSheet($(".sheet-tab.selected").next()[0]);
     }
+
     $(".sheet-tab.selected")[0].scrollIntoView();
 });
 
 
 
-$("#menu-file").click(function(e){
+$("#menu-file").click(function (e) {
     let fileModal = $(`<div class="file-modal">
                         <div class="file-options-modal">
                             <div class="close">
@@ -646,74 +663,64 @@ $("#menu-file").click(function(e){
                                 <div>Save</div>
                             </div>
                         </div>
-                        <div class="file-recent-modal">
-                        </div>
-                        <div class="file-transparent">
-                        </div>
-                        
+                        <div class="file-recent-modal"></div>
+                        <div class="file-transparent"></div>
                     </div>`);
     $(".container").append(fileModal);
     fileModal.animate({
-        width:"100vw"
-    },300);
-    $(".close,.file-transparent,.new,.save,.open").click(function(e){
+        width: "100vw"
+    }, 300);
+    $(".close,.file-transparent,.new,.save,.open").click(function (e) {
         fileModal.animate({
             width: "0vw"
-        },300);
-        setTimeout(()=>{
+        }, 300);
+        setTimeout(() => {
             fileModal.remove();
-        },250);
+        }, 250);
     });
-    $(".new").click(function(e){
-        if(save){
+    $(".new").click(function (e) {
+        if (save) {
             newFile();
-        }else{
+        } else {
             $(".container").append(`<div class="sheet-modal-parent">
-                                <div class="sheet-delete-modal">
-                                    <div class="sheet-modal-title">${$(".title").text()}</div>
-                                    <div class="sheet-modal-detail-container">
-                                        <span class="sheet-modal-detail-title">Do you want to save changes?</span>
-                                    </div>
-                                    <div class="sheet-modal-confirmation">
-                                        <div class="button yes-button">
-                                            Yes
+                                        <div class="sheet-delete-modal">
+                                            <div class="sheet-modal-title">${$(".title").text()}</div>
+                                            <div class="sheet-modal-detail-container">
+                                                <span class="sheet-modal-detail-title">Do you want to save changes?</span>
+                                            </div>
+                                            <div class="sheet-modal-confirmation">
+                                                <div class="button yes-button">
+                                                    Yes
+                                                </div>
+                                                <div class="button no-button">No</div>
+                                            </div>
                                         </div>
-                                        <div class="button no-button">No</div>
-                                    </div>
-                                </div>
-                            </div>`);
-            
-            $(".no-button").click(function(e){
+                                    </div>`);
+            $(".no-button").click(function (e) {
                 $(".sheet-modal-parent").remove();
                 newFile();
             });
-            $(".yes-button").click(function(e){
+            $(".yes-button").click(function (e) {
                 $(".sheet-modal-parent").remove();
                 saveFile(true);
             });
         }
-        // emptyPreviousSheet();
-        // cellData = {"Sheet1" : {}};
-        // $(".sheet-tab").remove();
-        // $(".sheet-tab-container").append(`<div></div>`);
-        // selectedSheet = "Sheet1";
-        // totalSheets = 1;
-        // $(".title").text("Excel - Book");
-        // $("#row-1-col-1").click();
     });
-    $(".save").click(function(e){
-        if(!save){
+    $(".save").click(function (e) {
+        if (!save) {
             saveFile();
         }
     });
-    $(".open").click(function(e){
+
+    $(".open").click(function (e) {
         openFile();
     })
+
 });
 
-function newFile(){
+function newFile() {
     emptyPreviousSheet();
-    cellData = {"Sheet1" : {}};
+    cellData = { "Sheet1": {} };
     $(".sheet-tab").remove();
     $(".sheet-tab-container").append(`<div class="sheet-tab selected">Sheet1</div>`);
     addSheetEvents();
@@ -724,64 +731,63 @@ function newFile(){
     $("#row-1-col-1").click();
 }
 
-function saveFile(newClicked){
+function saveFile(newClicked) {
     $(".container").append(`<div class="sheet-modal-parent">
-                        <div class="sheet-rename-modal">
-                            <div class="sheet-modal-title">Save File</div>
-                            <div class="sheet-modal-input-container">
-                                <span class="sheet-modal-input-title">File Name:</span>
-                                <input class="sheet-modal-input" value="${$(".title").text()}" type="text" />
-                            </div>
-                            <div class="sheet-modal-confirmation">
-                                <div class="button yes-button">Save</div>
-                                <div class="button no-button">Cancel</div>
-                            </div>
-                        </div>
-                    </div>`);
-    $(".yes-button").click(function(e){
+                                <div class="sheet-rename-modal">
+                                    <div class="sheet-modal-title">Save File</div>
+                                    <div class="sheet-modal-input-container">
+                                        <span class="sheet-modal-input-title">File Name:</span>
+                                        <input class="sheet-modal-input" value="${$(".title").text()}" type="text" />
+                                    </div>
+                                    <div class="sheet-modal-confirmation">
+                                        <div class="button yes-button">Save</div>
+                                        <div class="button no-button">Cancel</div>
+                                    </div>
+                                </div>
+                            </div>`);
+    $(".yes-button").click(function (e) {
         $(".title").text($(".sheet-modal-input").val());
         let a = document.createElement("a");
         a.href = `data:application/json,${encodeURIComponent(JSON.stringify(cellData))}`;
         a.download = $(".title").text() + ".json";
         $(".container").append(a);
         a.click();
-        a.remove();
-        save=true;
+        // a.remove();
+        save = true;
+
     });
-    $(".no-button,.yes-button").click(function(e){
+    $(".no-button,.yes-button").click(function (e) {
         $(".sheet-modal-parent").remove();
-        if(newClicked){
+        if (newClicked) {
             newFile();
         }
     });
 }
 
-function openFile(){
-    //Check for saving.
+function openFile() {
     let inputFile = $(`<input accept="application/json" type="file" />`);
     $(".container").append(inputFile);
     inputFile.click();
-    inputFile.change(function(e){
+    inputFile.change(function (e) {
+        console.log(inputFile.val());
         let file = e.target.files[0];
         $(".title").text(file.name.split(".json")[0]);
         let reader = new FileReader();
         reader.readAsText(file);
         reader.onload = () => {
-            let data = JSON.parse(reader.result);
             emptyPreviousSheet();
-            cellData = data;
             $(".sheet-tab").remove();
+            cellData = JSON.parse(reader.result);
             let sheets = Object.keys(cellData);
-            lastlyAddedSheet=1;
-            for(let i of sheets){
-                if(i.includes("Sheet")) {
+            lastlyAddedSheet = 1;
+            for (let i of sheets) {
+                if (i.includes("Sheet")) {
                     let splittedSheetArray = i.split("Sheet");
-                    if(splittedSheetArray.length == 2 && !isNaN(splittedSheetArray[1])) {
+                    if (splittedSheetArray.length == 2 && !isNaN(splittedSheetArray[1])) {
                         lastlyAddedSheet = parseInt(splittedSheetArray[1]);
                     }
                 }
-                let tab = $(`<div class="sheet-tab selected">${i}</div>`);
-                $(".sheet-tab-container").append(tab);
+                $(".sheet-tab-container").append(`<div class="sheet-tab selected">${i}</div>`);
             }
             addSheetEvents();
             $(".sheet-tab").removeClass("selected");
@@ -794,51 +800,209 @@ function openFile(){
     });
 }
 
-let clipboard = {startCell: [], cellData:{}};
-
-$("#copy").click(function(e){
+let clipboard = { startCell: [], cellData: {} };
+let contentCutted = false;
+$("#cut,#copy").click(function (e) {
+    if ($(this).text() == "content_cut") {
+        contentCutted = true;
+    }
+    clipboard = { startCell: [], cellData: {} };
     clipboard.startCell = getRowCol($(".input-cell.selected")[0]);
-    $(".input-cell.selected").each(function(index,data){
-        let [rowId,colId] = getRowCol(data);
-        if(cellData[selectedSheet][rowId-1] && cellData[selectedSheet][rowId-1][colId-1]){
-            if(!clipboard.cellData[rowId]){
+    $(".input-cell.selected").each(function (index, data) {
+        let [rowId, colId] = getRowCol(data);
+        if (cellData[selectedSheet][rowId - 1] && cellData[selectedSheet][rowId - 1][colId - 1]) {
+            if (!clipboard.cellData[rowId]) {
                 clipboard.cellData[rowId] = {};
             }
-            clipboard.cellData[rowId][colId] = {...cellData[selectedSheet][rowId-1][colId-1]};
+            clipboard.cellData[rowId][colId] = { ...cellData[selectedSheet][rowId - 1][colId - 1] };
         }
     });
     console.log(clipboard);
-})
+});
 
-$("#paste").click(function(e){
-    console.log("ho");
+$("#paste").click(function (e) {
+    if (contentCutted) {
+        emptyPreviousSheet();
+    }
     let startCell = getRowCol($(".input-cell.selected")[0]);
     let rows = Object.keys(clipboard.cellData);
-    for(let i of rows){
+    for (let i of rows) {
         let cols = Object.keys(clipboard.cellData[i]);
-        for(let j of cols){
+        for (let j of cols) {
+            if (contentCutted) {
+                delete cellData[selectedSheet][i - 1][j - 1];
+                if (Object.keys(cellData[selectedSheet][i - 1]).length == 0) {
+                    delete cellData[selectedSheet][i - 1];
+                }
+            }
+
+        }
+    }
+    for (let i of rows) {
+        let cols = Object.keys(clipboard.cellData[i]);
+        for (let j of cols) {
             let rowDistance = parseInt(i) - parseInt(clipboard.startCell[0]);
             let colDistance = parseInt(j) - parseInt(clipboard.startCell[1]);
-            if(!cellData[selectedSheet][startCell[0] + rowDistance - 1]) {
+            if (!cellData[selectedSheet][startCell[0] + rowDistance - 1]) {
                 cellData[selectedSheet][startCell[0] + rowDistance - 1] = {};
             }
-            cellData[selectedSheet][startCell[0] + rowDistance - 1][startCell[1] + colDistance - 1] = {...clipboard.cellData[i][j]};
+            cellData[selectedSheet][startCell[0] + rowDistance - 1][startCell[1] + colDistance - 1] = { ...clipboard.cellData[i][j] };
         }
     }
     loadCurrentSheet();
-    console.log(cellData);
+    if (contentCutted) {
+        contentCutted = false;
+        clipboard = { startCell: [], cellData: {} };
+    }
 });
 
-// $("#cut").click(function(e){
-//     clipboard.startCell = getRowCol($(".input-cell.selected")[0]);
-//     $(".input-cell.selected").each(function(index,data){
-//         let [rowId,colId] = getRowCol(data);
-//         if(cellData[selectedSheet][rowId-1] && cellData[selectedSheet][rowId-1][colId-1]){
-//             if(!clipboard.cellData[rowId]){
-//                 clipboard.cellData[rowId] = {};
-//             }
-//             clipboard.cellData[rowId][colId] = {cellData[selectedSheet][rowId-1][colId-1]};
-//         }
-//     });
-//     console.log(clipboard);
-// })
+$("#formula-input").blur(function (e) {
+    if ($(".input-cell.selected").length > 0) {
+        let formula = $(this).text();
+        let tempElements = formula.split(" ");
+        let elements = [];
+        for (let i of tempElements) {
+            if (i.length >= 2) {
+                i = i.replace("(", "");
+                i = i.replace(")", "");
+                if (!elements.includes(i)) {
+                    elements.push(i);
+                }
+            }
+        }
+        $(".input-cell.selected").each(function (index, data) {
+            if (updateStreams(data, elements, false)) {
+                let [rowId, colId] = getRowCol(data);
+                cellData[selectedSheet][rowId - 1][colId - 1].formula = formula;
+                let selfColCode = $(`.column-${colId}`).attr("id");
+                evalFormula(selfColCode + rowId);
+            } else {
+                alert("Formula is not valid");
+            }
+        })
+    } else {
+        alert("!Please select a cell First");
+    }
+});
+
+function updateStreams(ele, elements, update, oldUpstream) {
+    let [rowId, colId] = getRowCol(ele);
+    let selfColCode = $(`.column-${colId}`).attr("id");
+    if (elements.includes(selfColCode + rowId)) {
+        return false;
+    }
+    if (cellData[selectedSheet][rowId - 1] && cellData[selectedSheet][rowId - 1][colId - 1]) {
+        let downStream = cellData[selectedSheet][rowId - 1][colId - 1].downStream;
+        let upStream = cellData[selectedSheet][rowId - 1][colId - 1].upStream;
+        for (let i of downStream) {
+            if (elements.includes(i)) {
+                return false;
+            }
+        }
+        for (let i of downStream) {
+            let [calRowId, calColId] = codeToValue(i);
+            console.log(updateStreams($(`#row-${calRowId}-col-${calColId}`)[0], elements, true, upStream));
+        }
+    }
+
+    if (!cellData[selectedSheet][rowId - 1]) {
+        cellData[selectedSheet][rowId - 1] = {};
+        cellData[selectedSheet][rowId - 1][colId - 1] = { ...defaultProperties, "upStream": [...elements], "downStream": [] };
+    } else if (!cellData[selectedSheet][rowId - 1][colId - 1]) {
+        cellData[selectedSheet][rowId - 1][colId - 1] = { ...defaultProperties, "upStream": [...elements], "downStream": [] };
+    } else {
+
+        let upStream = [...cellData[selectedSheet][rowId - 1][colId - 1].upStream];
+        if (update) {
+            for (let i of oldUpstream) {
+                let [calRowId, calColId] = codeToValue(i);
+                let index = cellData[selectedSheet][calRowId - 1][calColId - 1].downStream.indexOf(selfColCode + rowId);
+                cellData[selectedSheet][calRowId - 1][calColId - 1].downStream.splice(index, 1);
+                if (JSON.stringify(cellData[selectedSheet][calRowId - 1][calColId - 1]) == JSON.stringify(defaultProperties)) {
+                    delete cellData[selectedSheet][calRowId - 1][calColId - 1];
+                    if (Object.keys(cellData[selectedSheet][calRowId - 1]).length == 0) {
+                        delete cellData[selectedSheet][calRowId - 1];
+                    }
+                }
+                index = cellData[selectedSheet][rowId - 1][colId - 1].upStream.indexOf(i);
+                cellData[selectedSheet][rowId - 1][colId - 1].upStream.splice(index, 1);
+            }
+            for (let i of elements) {
+                cellData[selectedSheet][rowId - 1][colId - 1].upStream.push(i);
+            }
+        } else {
+            for (let i of upStream) {
+                let [calRowId, calColId] = codeToValue(i);
+                let index = cellData[selectedSheet][calRowId - 1][calColId - 1].downStream.indexOf(selfColCode + rowId);
+                cellData[selectedSheet][calRowId - 1][calColId - 1].downStream.splice(index, 1);
+                if (JSON.stringify(cellData[selectedSheet][calRowId - 1][calColId - 1]) == JSON.stringify(defaultProperties)) {
+                    delete cellData[selectedSheet][calRowId - 1][calColId - 1];
+                    if (Object.keys(cellData[selectedSheet][calRowId - 1]).length == 0) {
+                        delete cellData[selectedSheet][calRowId - 1];
+                    }
+                }
+            }
+            cellData[selectedSheet][rowId - 1][colId - 1].upStream = [...elements];
+        }
+    }
+
+    for (let i of elements) {
+        let [calRowId, calColId] = codeToValue(i);
+        if (!cellData[selectedSheet][calRowId - 1]) {
+            cellData[selectedSheet][calRowId - 1] = {};
+            cellData[selectedSheet][calRowId - 1][calColId - 1] = { ...defaultProperties, "upStream": [], "downStream": [selfColCode + rowId] };
+        } else if (!cellData[selectedSheet][calRowId - 1][calColId - 1]) {
+            cellData[selectedSheet][calRowId - 1][calColId - 1] = { ...defaultProperties, "upStream": [], "downStream": [selfColCode + rowId] };
+        } else {
+            cellData[selectedSheet][calRowId - 1][calColId - 1].downStream.push(selfColCode + rowId);
+        }
+    }
+    console.log(cellData);
+    return true;
+
+}
+
+function codeToValue(code) {
+    let colCode = "";
+    let rowCode = "";
+    for (let i = 0; i < code.length; i++) {
+        if (!isNaN(code.charAt(i))) {
+            rowCode += code.charAt(i);
+        } else {
+            colCode += code.charAt(i);
+        }
+    }
+    let colId = parseInt($(`#${colCode}`).attr("class").split(" ")[1].split("-")[1]);
+    let rowId = parseInt(rowCode);
+    return [rowId, colId];
+}
+
+function evalFormula(cell) {
+    let [rowId, colId] = codeToValue(cell);
+    let formula = cellData[selectedSheet][rowId - 1][colId - 1].formula;
+    console.log(formula);
+    if (formula != "") {
+        let upStream = cellData[selectedSheet][rowId - 1][colId - 1].upStream;
+        let upStreamValue = [];
+        for (let i in upStream) {
+            let [calRowId, calColId] = codeToValue(upStream[i]);
+            let value;
+            if (cellData[selectedSheet][calRowId - 1][calColId - 1].text == "") {
+                value = "0";
+            }
+             else {
+                value = cellData[selectedSheet][calRowId - 1][calColId - 1].text;
+            }
+            upStreamValue.push(value);
+            console.log(upStreamValue);
+            formula = formula.replace(upStream[i], upStreamValue[i]);
+        }
+        cellData[selectedSheet][rowId - 1][colId - 1].text = eval(formula);
+        loadCurrentSheet();
+    }
+    let downStream = cellData[selectedSheet][rowId - 1][colId - 1].downStream;
+    for (let i = downStream.length - 1; i >= 0; i--) {
+        evalFormula(downStream[i]);
+    }
+
+}
