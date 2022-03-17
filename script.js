@@ -364,7 +364,7 @@ $(".pick-color").colorPick({
                 // });
                 updateCellData("color", this.color);
             }
-        }
+        } 
     }
 });
 
@@ -388,7 +388,7 @@ $(".menu-selector").change(function (e) {
         $("#font-family").css(key, value);
     }
     if (!isNaN(value)) {
-        value = parseInt(value);
+        value = parseInt(value); 
     }
 
     $(".input-cell.selected").css(key, value);
@@ -762,7 +762,7 @@ function saveFile(newClicked) {
             newFile();
         }
     });
-}
+} 
 
 function openFile() {
     let inputFile = $(`<input accept="application/json" type="file" />`);
@@ -857,6 +857,7 @@ $("#paste").click(function (e) {
 });
 
 $("#formula-input").blur(function (e) {
+    console.log("jojojo")
     if ($(".input-cell.selected").length > 0) {
         let formula = $(this).text();
         let tempElements = formula.split(" ");
@@ -1004,5 +1005,4 @@ function evalFormula(cell) {
     for (let i = downStream.length - 1; i >= 0; i--) {
         evalFormula(downStream[i]);
     }
-
 }
